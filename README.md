@@ -51,7 +51,7 @@ https://photos.sambecker.com
 
 🔄&nbsp;&nbsp;Receiving updates
 -
-If you don't plan to change the code, or don't mind making your updates public, consider [forking](https://github.com/sambecker/exif-photo-blog/fork) this repo to easily receive future updates. If you've already set up your project on Vercel see these [migration instructions](#how-do-i-receive-template-updates).
+If you don't plan to chang e the code, or don't mind making your updates public, consider [forking](https://github.com/sambecker/exif-photo-blog/fork) this repo to easily receive future updates. If you've already set up your project on Vercel see these [migration instructions](#how-do-i-receive-template-updates).
 
 💻&nbsp;&nbsp;Local development
 -
