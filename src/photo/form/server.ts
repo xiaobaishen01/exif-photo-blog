@@ -13,11 +13,13 @@ import { PhotoExif } from '..';
 import { FujifilmRecipe } from '@/platforms/fujifilm/recipe';
 import { FujifilmSimulation } from '@/platforms/fujifilm/simulation';
 import type { ExifData, ExifTags } from 'ts-exif-parser';
+import { NikonPictureControl } from '@/platforms/nikon/simulation';
+import { parameterize } from '@/utility/string';
 
 export const convertExifToFormData = (
   exif: ExifData,
   exifr?: any,
-  film?: FujifilmSimulation,
+  film?: FujifilmSimulation | NikonPictureControl,
   recipeData?: FujifilmRecipe,
 ): Partial<Record<keyof PhotoExif, string | undefined>> => {
   let title: string | undefined = exifr?.title?.value;
@@ -41,6 +43,7 @@ export const convertExifToFormData = (
   ) => getCompatibleExifValue(key, exif, exifr, exifrSpecificKey);
 
   const dateTimeOriginal = getExifValue('DateTimeOriginal');
+  const offset = getOffsetFromExif(exif, exifr);
 
   return {
     aspectRatio: getAspectRatioFromExif(exif).toString(),
@@ -65,12 +68,14 @@ export const convertExifToFormData = (
     longitude: !GEO_PRIVACY_ENABLED
       ? getExifValue('GPSLongitude', 'longitude')?.toString()
       : undefined,
-    film,
+    // Make sure film is parameterized since
+    // Nikon picture controls may not be parameterized
+    film: film ? parameterize(film) : undefined,
     recipeData: JSON.stringify(recipeData),
     ...dateTimeOriginal && {
       takenAt: convertTimestampWithOffsetToPostgresString(
         dateTimeOriginal,
-        getOffsetFromExif(exif, exifr),
+        offset,
       ),
       takenAtNaive:
         convertTimestampToNaivePostgresString(dateTimeOriginal),
