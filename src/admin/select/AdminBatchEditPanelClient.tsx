@@ -1,11 +1,10 @@
 'use client';
 
-import Note from '@/components/Note';
 import LoaderButton from '@/components/primitives/LoaderButton';
 import AppGrid from '@/components/AppGrid';
 import { clsx } from 'clsx/lite';
 import { IoCloseSharp } from 'react-icons/io5';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { Tags } from '@/tag';
 import FieldsetTag from '@/tag/FieldsetTag';
 import { batchPhotoAction } from '@/photo/actions';
@@ -27,36 +26,48 @@ import { convertStringToArray } from '@/utility/string';
 export default function AdminBatchEditPanelClient({
   uniqueAlbums,
   uniqueTags,
-  showSelectAll,
 }: {
   uniqueAlbums: Albums
   uniqueTags: Tags
-  showSelectAll?: boolean
 }) {
   const refNote = useRef<HTMLDivElement>(null);
 
   const {
     canCurrentPageSelectPhotos,
+    shouldShowSelectAll,
     isSelectingPhotos,
     stopSelectingPhotos,
     isSelectingAllPhotos,
     toggleIsSelectingAllPhotos,
     selectedPhotoIds,
+    selectAllPhotoOptions,
+    selectAllCount,
     isPerformingSelectEdit,
     setIsPerformingSelectEdit,
+    albumTitles,
+    setAlbumTitles,
+    tags,
+    setTags,
+    tagErrorMessage,
+    setTagErrorMessage,
   } = useSelectPhotosState();
 
   const appText = useAppText();
 
-  const [albumTitles, setAlbumsTitles] = useState<string>();
   const isInAlbumMode = albumTitles !== undefined;
-
-  const [tags, setTags] = useState<string>();
-  const [tagErrorMessage, setTagErrorMessage] = useState('');
   const isInTagMode = tags !== undefined;
 
+  const batchPhotoActionArguments = (
+    isSelectingAllPhotos &&
+    selectAllPhotoOptions
+  )
+    ? { photoOptions: selectAllPhotoOptions }
+    : { photoIds: selectedPhotoIds };
+
   const photosText = photoQuantityText(
-    selectedPhotoIds?.length ?? 0,
+    (isSelectingAllPhotos && selectAllCount !== undefined
+      ? selectAllCount
+      : selectedPhotoIds?.length) ?? 0,
     appText,
     false,
     false,
@@ -64,18 +75,28 @@ export default function AdminBatchEditPanelClient({
 
   const isFormDisabled =
     isPerformingSelectEdit ||
-    selectedPhotoIds?.length === 0;
+    isSelectingAllPhotos
+      ? !Boolean(selectAllCount)
+      : selectedPhotoIds?.length === 0;
 
-  const renderPhotoCTA = selectedPhotoIds?.length === 0
-    ? <>
-      <FaArrowDown />
-      <ResponsiveText shortText="Select">
-        Select photos below
+  const renderPhotoSelectionStatus = isSelectingAllPhotos
+    ? selectAllCount === undefined
+      ? <ResponsiveText shortText="Selecting" className="text-dim">
+        Selecting ...
       </ResponsiveText>
-    </>
-    : <ResponsiveText shortText={photosText}>
-      {photosText} selected
-    </ResponsiveText>;
+      : <ResponsiveText shortText={`${selectAllCount} photos`}>
+        {`${selectAllCount} photos selected`}
+      </ResponsiveText>
+    : selectedPhotoIds?.length === 0
+      ? <>
+        <FaArrowDown />
+        <ResponsiveText shortText="Select">
+          Select photos below
+        </ResponsiveText>
+      </>
+      : <ResponsiveText shortText={photosText}>
+        {photosText} selected
+      </ResponsiveText>;
 
   const renderActions = isInTagMode || isInAlbumMode
     ? <>
@@ -86,9 +107,9 @@ export default function AdminBatchEditPanelClient({
           className="translate-y-[0.5px]"
         />}
         onClick={() => {
-          setAlbumsTitles(undefined);
-          setTags(undefined);
-          setTagErrorMessage('');
+          setAlbumTitles?.(undefined);
+          setTags?.(undefined);
+          setTagErrorMessage?.('');
         }}
         disabled={isPerformingSelectEdit}
       />
@@ -103,22 +124,32 @@ export default function AdminBatchEditPanelClient({
         onClick={() => {
           setIsPerformingSelectEdit?.(true);
           if (isInTagMode) {
+            const tagsArray = convertStringToArray(tags, false);
+            const tagsFormatted = tagsArray
+              .map(tag => `"${tag}"`)
+              .join(', ');
             batchPhotoAction({
-              photoIds: selectedPhotoIds,
-              tags: convertStringToArray(tags, false),
+              ...batchPhotoActionArguments,
+              tags: tagsArray,
             })
               .then(() => {
-                toastSuccess(`${photosText} tagged`);
+                toastSuccess(`${photosText} tagged ${tagsFormatted}`);
                 stopSelectingPhotos?.();
               })
               .finally(() => setIsPerformingSelectEdit?.(false));
           } else if (isInAlbumMode) {
+            const albumTitlesArray = convertStringToArray(albumTitles, false);
+            const albumTitlesFormatted = albumTitlesArray
+              .map(title => `"${title}"`)
+              .join(', ');
             batchPhotoAction({
-              photoIds: selectedPhotoIds,
-              albumTitles: albumTitles.split(','),
+              ...batchPhotoActionArguments,
+              albumTitles: albumTitlesArray,
             })
               .then(() => {
-                toastSuccess(`${photosText} added`);
+                toastSuccess(
+                  `${photosText} added to ${albumTitlesFormatted}`,
+                );
                 stopSelectingPhotos?.();
               })
               .finally(() => setIsPerformingSelectEdit?.(false));
@@ -129,8 +160,7 @@ export default function AdminBatchEditPanelClient({
             (!tags || Boolean(tagErrorMessage)) &&
             !albumTitles
           ) ||
-          (selectedPhotoIds?.length ?? 0) === 0 ||
-          isPerformingSelectEdit
+          isFormDisabled
         }
         primary
       >
@@ -139,7 +169,10 @@ export default function AdminBatchEditPanelClient({
     </>
     : <>
       <DeletePhotosButton
-        photoIds={selectedPhotoIds}
+        {...{
+          ...batchPhotoActionArguments,
+          photosText,
+        }}
         disabled={isFormDisabled}
         onClick={() => setIsPerformingSelectEdit?.(true)}
         onDelete={stopSelectingPhotos}
@@ -152,7 +185,7 @@ export default function AdminBatchEditPanelClient({
         onClick={() => {
           setIsPerformingSelectEdit?.(true);
           batchPhotoAction({
-            photoIds: selectedPhotoIds,
+            ...batchPhotoActionArguments,
             action: 'favorite',
           })
             .then(() => {
@@ -163,14 +196,14 @@ export default function AdminBatchEditPanelClient({
         }}
       />
       <LoaderButton
-        onClick={() => setAlbumsTitles('')}
+        onClick={() => setAlbumTitles?.('')}
         disabled={isFormDisabled}
         icon={<IconAlbum size={15} className="translate-y-[1.5px]" />}
       >
         Album
       </LoaderButton>
       <LoaderButton
-        onClick={() => setTags('')}
+        onClick={() => setTags?.('')}
         disabled={isFormDisabled}
         icon={<IconTag size={15} className="translate-y-[1.5px]" />}
       >
@@ -196,62 +229,65 @@ export default function AdminBatchEditPanelClient({
   return shouldShowPanel
     ? <AppGrid
       className="sticky top-0 z-10 -mt-2 pt-2"
-      contentMain={<div className="flex flex-col gap-2">
-        <Note
+      contentMain={
+        <div
           ref={refNote}
           color="gray"
           className={clsx(
-            'min-h-[3.5rem] pr-2',
-            'backdrop-blur-lg border-transparent!',
+            'flex flex-col gap-2',
+            'p-2 rounded-xl',
+            'backdrop-blur-lg',
             'text-gray-900! dark:text-gray-100!',
             'bg-gray-100/90! dark:bg-gray-900/70!',
-            // Override default <Note /> content spacing
-            '[&>*>*:first-child]:gap-1.5 sm:[&>*>*:first-child]:gap-2.5',
+            'outline outline-medium',
+            'shadow-xl/5',
           )}
-          padding={isInTagMode ? 'tight-cta-right-left' : 'tight-cta-right'}
-          cta={<div className="flex items-center gap-1.5 sm:gap-2.5">
-            {renderActions}
-          </div>}
-          spaceChildren={false}
-          hideIcon
         >
-          {isInAlbumMode
-            ? <FieldsetAlbum
-              albumOptions={uniqueAlbums}
-              value={albumTitles}
-              onChange={setAlbumsTitles}
-              readOnly={isPerformingSelectEdit}
-              openOnLoad
-              hideLabel
-            />
-            : isInTagMode
-              ? <FieldsetTag
-                tags={tags}
-                tagOptions={uniqueTags}
-                placeholder={`Tag ${photosText} ...`}
-                onChange={setTags}
-                onError={setTagErrorMessage}
+          <div className={clsx(
+            'flex items-center gap-1 md:gap-2',
+            '[&>*:first-child]:grow',
+          )}>
+            {isInAlbumMode
+              ? <FieldsetAlbum
+                albumOptions={uniqueAlbums}
+                value={albumTitles}
+                onChange={setAlbumTitles}
                 readOnly={isPerformingSelectEdit}
                 openOnLoad
                 hideLabel
               />
-              : <div>
-                <div className="text-base flex gap-2 items-center">
-                  {renderPhotoCTA}
-                </div>
-                {showSelectAll &&
-                  <FieldsetWithStatus
-                    label="Select All Photos"
-                    type="checkbox"
-                    value={isSelectingAllPhotos ? 'true' : 'false'}
-                    onChange={toggleIsSelectingAllPhotos}
-                  />}
-              </div>}
-        </Note>
-        {tagErrorMessage &&
-          <div className="text-error pl-4">
-            {tagErrorMessage}
-          </div>}
-      </div>} />
+              : isInTagMode
+                ? <FieldsetTag
+                  tags={tags}
+                  tagOptions={uniqueTags}
+                  placeholder={`Tag ${photosText} ...`}
+                  onChange={tags => setTags?.(tags)}
+                  onError={setTagErrorMessage}
+                  readOnly={isPerformingSelectEdit}
+                  openOnLoad
+                  hideLabel
+                />
+                : <div className="grow">
+                  <div className="flex items-center gap-2">
+                    {renderPhotoSelectionStatus}
+                  </div>
+                </div>}
+            {renderActions}
+          </div>
+          {shouldShowSelectAll &&
+            <FieldsetWithStatus
+              label="Select All"
+              type="checkbox"
+              className="-z-10"
+              value={isSelectingAllPhotos ? 'true' : 'false'}
+              onChange={toggleIsSelectingAllPhotos}
+              readOnly={isSelectingAllPhotos &&
+                selectAllCount === undefined}
+            />}
+          {tagErrorMessage &&
+            <div className="text-error pl-4">
+              {tagErrorMessage}
+            </div>}
+        </div>} />
     : null;
 }
